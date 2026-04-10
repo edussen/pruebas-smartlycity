@@ -241,9 +241,12 @@ async function analizarImagenes() {
             }
         }
 
-        // RENDERIZAR CARTAS CON COLORES DINÁMICOS
+      // RENDERIZAR CARTAS CON COLORES DINÁMICOS
         grid.innerHTML = res.todos_los_resultados.map((item, i) => {
-            const win = res.ganadora && i === res.ganadora.index;
+            
+            // 🔥 AQUÍ ESTÁ LA CORRECCIÓN: Usamos item.index en vez de i
+            const win = res.ganadora && item.index === res.ganadora.index; 
+            
             const score = item.similarity;
             const scoreStr = (score * 100).toFixed(1);
             
@@ -286,7 +289,6 @@ async function analizarImagenes() {
                 ${item.error ? `<div class="text-xs font-bold text-red-500 mt-1">⚠️ ${item.error}</div>` : ''}
             </div>`;
         }).join("");
-
         resArea.classList.remove('hidden');
 
     } catch (err) {
