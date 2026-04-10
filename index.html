@@ -168,6 +168,8 @@ const getSourceData = async (urlId, fileId) => {
 };
 
 // ------------------ IA Y LLAMADA ------------------
+// ... (manten todo igual arriba, reemplaza solo desde la función analizarImagenes)
+
 async function analizarImagenes() {
     const btn = document.getElementById('btnAnalizar');
     const loader = document.getElementById('loading');
@@ -176,22 +178,20 @@ async function analizarImagenes() {
     const titulo = document.getElementById('tituloResultado');
     const grid = document.getElementById('gridCartas');
     const targetCaptionBox = document.getElementById('targetCaption');
+    const cajaExplicacion = document.getElementById('cajaExplicacion');
 
     btn.disabled = true;
     loader.classList.remove('hidden');
     resArea.classList.add('hidden');
     grid.innerHTML = "";
     
-    // Restaurar colores
-    document.getElementById('cajaExplicacion').classList.replace('border-red-500', 'border-emerald-500');
-    explicacion.classList.remove('text-red-600');
+    // Restaurar base
+    cajaExplicacion.className = "bg-white border-l-8 p-6 rounded-2xl shadow-sm mb-8 transition-colors";
+    explicacion.className = "italic leading-relaxed font-medium";
 
     try {
         let targetData = fotoCapturadaBase64 || await getSourceData('targetUrl', 'targetFile');
-
-        if (!targetData) {
-            throw new Error("⚠️ Necesitas proveer una imagen base.");
-        }
+        if (!targetData) throw new Error("⚠️ Necesitas proveer una imagen base.");
 
         const rawCandidates = [
             await getSourceData('url0', 'file0'),
@@ -202,52 +202,87 @@ async function analizarImagenes() {
         const candidates = rawCandidates.filter(x => x && x.length > 10);
         if (candidates.length === 0) throw new Error("⚠️ Necesitas al menos un candidato válido.");
 
-        // 🔥 FETCH AL WORKER
         const response = await fetch('https://sofia-image.mrluki4656.workers.dev/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ targetUrl: targetData, candidates: candidates })
         });
 
-        if (!response.ok) {
-            const errJson = await response.json().catch(() => ({}));
-            throw new Error(errJson.error || `Error HTTP: ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
         const res = await response.json();
         if (!res.success) throw new Error(res.error);
 
         // ------------------ RENDERIZAR ÉXITO ------------------
-        
-        // Mostrar qué vio la IA en la cámara
         targetCaptionBox.classList.remove('hidden');
-        targetCaptionBox.innerText = `👁️ La IA detectó en la base: "${res.target_caption}"`;
+        targetCaptionBox.innerText = `👁️ La IA escaneó la base como: "${res.target_caption}"`;
 
         if (!res.ganadora) {
-            titulo.innerText = "Sin coincidencias";
-            explicacion.innerHTML = "⚠️ Ninguna imagen se parece lo suficiente al objeto principal.";
+            cajaExplicacion.classList.add('border-red-500');
+            explicacion.classList.add('text-red-700');
+            titulo.innerText = "Sin coincidencias claras";
+            explicacion.innerHTML = "⚠️ Los productos no se parecen lo suficiente a la imagen de referencia.";
         } else {
-            const score = (res.ganadora.similarity * 100).toFixed(1);
-            titulo.innerText = "Match encontrado";
-            explicacion.innerHTML = `🔥 La mejor coincidencia es la Opción #${res.ganadora.index + 1} (${score}%)`;
+            const score = res.ganadora.similarity;
+            const scoreStr = (score * 100).toFixed(1);
+            
+            // LÓGICA DE COLORES
+            if (score >= 0.70) {
+                // VERDE: Excelente Match
+                cajaExplicacion.classList.add('border-emerald-500');
+                explicacion.classList.add('text-emerald-700');
+                titulo.innerText = "¡Match Exacto Encontrado!";
+                explicacion.innerHTML = `✅ La mejor coincidencia es la Opción #${res.ganadora.index + 1} (${scoreStr}%).`;
+            } else {
+                // AMARILLO: Match Dudoso
+                cajaExplicacion.classList.add('border-amber-400');
+                explicacion.classList.add('text-amber-700');
+                titulo.innerText = "Posible coincidencia (Baja similitud)";
+                explicacion.innerHTML = `⚠️ La Opción #${res.ganadora.index + 1} es la más parecida (${scoreStr}%), pero existen diferencias notables.`;
+            }
         }
 
+        // RENDERIZAR CARTAS CON COLORES DINÁMICOS
         grid.innerHTML = res.todos_los_resultados.map((item, i) => {
             const win = res.ganadora && i === res.ganadora.index;
+            const score = item.similarity;
+            const scoreStr = (score * 100).toFixed(1);
+            
+            let cardStyle = 'opacity-80 border border-slate-200';
+            let badge = '';
+            let barColor = 'bg-blue-400';
+            let textColor = 'text-blue-500';
+
+            if (win) {
+                if (score >= 0.70) {
+                    cardStyle = 'border-4 border-emerald-500 bg-emerald-50 scale-105 shadow-xl z-10';
+                    badge = '<span class="absolute top-2 right-2 bg-emerald-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase shadow-md">Match Seguro</span>';
+                    barColor = 'bg-emerald-500';
+                    textColor = 'text-emerald-600';
+                } else {
+                    cardStyle = 'border-4 border-amber-400 bg-amber-50 scale-105 shadow-xl z-10';
+                    badge = '<span class="absolute top-2 right-2 bg-amber-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase shadow-md">Match Dudoso</span>';
+                    barColor = 'bg-amber-400';
+                    textColor = 'text-amber-600';
+                }
+            }
+
             return `
-            <div class="glass p-4 rounded-2xl border ${win ? 'winner-card bg-emerald-50' : 'opacity-80'} ${item.error ? 'border-red-500 bg-red-50' : ''}">
-                <img src="${item.url}" class="w-full h-48 object-cover rounded-xl mb-2" onerror="this.src='https://placehold.co/400?text=Error'">
+            <div class="glass p-4 rounded-2xl transition-all duration-300 ${cardStyle} ${item.error ? 'border-red-500 bg-red-50' : ''}">
+                <div class="relative overflow-hidden rounded-xl mb-4 h-48 bg-slate-200">
+                    <img src="${item.url}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/400?text=Error'">
+                    ${badge}
+                </div>
                 
                 <div class="flex justify-between items-center mb-1">
                     <span class="text-xs uppercase font-bold text-slate-500">OPCIÓN ${item.index + 1}</span>
-                    <span class="font-bold text-lg ${win ? 'text-emerald-600' : 'text-blue-600'}">${(item.similarity * 100).toFixed(1)}%</span>
+                    <span class="font-bold text-lg ${textColor}">${scoreStr}%</span>
                 </div>
                 
                 <div class="w-full bg-slate-200 h-1.5 rounded-full mb-2 overflow-hidden">
-                    <div class="bg-blue-500 h-full" style="width: ${item.similarity * 100}%"></div>
+                    <div class="${barColor} h-full" style="width: ${score * 100}%"></div>
                 </div>
 
-                ${item.caption ? `<div class="text-xs text-slate-500 bg-slate-100 p-2 rounded italic">" ${item.caption} "</div>` : ''}
+                ${item.caption ? `<div class="text-xs text-slate-600 bg-white/60 p-2 rounded italic font-medium">" ${item.caption} "</div>` : ''}
                 ${item.error ? `<div class="text-xs font-bold text-red-500 mt-1">⚠️ ${item.error}</div>` : ''}
             </div>`;
         }).join("");
@@ -255,13 +290,11 @@ async function analizarImagenes() {
         resArea.classList.remove('hidden');
 
     } catch (err) {
-        // 🚨 RENDERIZAR ERROR EN PANTALLA
-        document.getElementById('resultadoArea').classList.remove('hidden');
-        document.getElementById('cajaExplicacion').classList.replace('border-emerald-500', 'border-red-500');
+        cajaExplicacion.classList.add('border-red-500');
+        explicacion.classList.add('text-red-700');
         titulo.innerText = "Fallo del Sistema";
-        explicacion.innerHTML = `<span class="text-red-600 font-bold">❌ ${err.message}</span>`;
-        targetCaptionBox.classList.add('hidden');
-        grid.innerHTML = "";
+        explicacion.innerHTML = `❌ ${err.message}`;
+        resArea.classList.remove('hidden');
     } finally {
         loader.classList.add('hidden');
         btn.disabled = false;
